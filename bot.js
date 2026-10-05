@@ -219,6 +219,43 @@ async function fetchGoldNews() {
   }
 }
 
+// Key US Economic Indicators that directly move Gold (XAU/USD)
+const GOLD_EVENT_KEYWORDS = [
+  'fomc', 'fed', 'powell', 'rate', 'cpi', 'ppi', 'pce', 'inflation',
+  'employment', 'payrolls', 'nfp', 'unemployment claims', 'jobless claims',
+  'ism', 'gdp', 'retail sales', 'consumer sentiment', 'bond auction', 'speaks'
+];
+
+function isGoldMovingEvent(event) {
+  if (event.country !== 'USD') return false;
+  // All High impact US events move Gold
+  if (event.impact === 'High') return true;
+  
+  const titleLower = event.title.toLowerCase();
+  // Include Medium/Low impact events that specifically move Gold
+  return GOLD_EVENT_KEYWORDS.some(kw => titleLower.includes(kw));
+}
+
+function getEventTradingHint(title) {
+  const t = title.toLowerCase();
+  if (t.includes('unemployment claims') || t.includes('jobless claims')) {
+    return 'Claims badh kar aaye (Weak Jobs) -> Dollar Down, Gold UP 📈\nClaims kam aaye (Strong Jobs) -> Dollar Up, Gold DOWN 📉';
+  }
+  if (t.includes('cpi') || t.includes('ppi') || t.includes('pce') || t.includes('inflation')) {
+    return 'Inflation cooling -> Fed rate cuts -> Gold Rallies UP 📈\nInflation hot/rising -> Rates high -> Gold Slides DOWN 📉';
+  }
+  if (t.includes('nfp') || t.includes('payrolls') || t.includes('employment')) {
+    return 'NFP weak aayi -> Dollar crash, Gold SURGE 🚀\nNFP strong aayi -> Dollar rally, Gold DUMP 📉';
+  }
+  if (t.includes('fomc') || t.includes('powell') || t.includes('rate') || t.includes('speaks')) {
+    return 'Dovish tone (Rate cut umeed) -> Gold UP 📈\nHawkish tone (High rates) -> Gold DOWN 📉';
+  }
+  if (t.includes('ism') || t.includes('gdp') || t.includes('retail sales')) {
+    return 'Weak economic data -> Gold Safe-Haven UP 📈\nStrong data -> Dollar Strong, Gold DOWN 📉';
+  }
+  return 'High Volatility candle expected! Dollar move ke opposite Gold react karega.';
+}
+
 // ==========================================
 // 4. FOREX FACTORY US ECONOMIC CALENDAR
 // ==========================================
@@ -228,9 +265,9 @@ async function fetchForexFactoryUSDCalendar() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Filter only US High-Impact Events (Red Folder)
-    const usdHighEvents = data.filter(e => e.country === 'USD' && e.impact === 'High');
-    return usdHighEvents;
+    // Comprehensive Gold market moving US events
+    const usdEvents = data.filter(isGoldMovingEvent);
+    return usdEvents;
   } catch (err) {
     console.error('Error fetching Forex Factory Calendar:', err.message);
     return [];
@@ -268,12 +305,14 @@ async function checkMarket() {
             relatedNews.map((n, idx) => `${idx + 1}. <b>${n.title}</b>\n🔗 <a href="${n.link}">Report Padhe</a>`).join('\n\n') + `\n`;
         }
 
-        const calMsg = `⚠️ <b>HIGH IMPACT US EVENT & RELATED NEWS</b> ⚠️\n\n` +
-          `📌 <b>Event:</b> ${ev.title}\n` +
-          `⏰ <b>Release Time:</b> ${timeStr} (Sirf ${diffMinutes} min me!)\n` +
+        const tradingHint = getEventTradingHint(ev.title);
+
+        const calMsg = `⚠️ <b>US EVENT ALERT & GOLD IMPACT</b> ⚠️\n\n` +
+          `📌 <b>Event:</b> ${ev.title} (${ev.impact} Impact)\n` +
+          `⏰ <b>Release Time:</b> ${timeStr} IST (Sirf ${diffMinutes} min me!)\n` +
           `📊 <b>Forecast:</b> ${ev.forecast || 'N/A'} | <b>Previous:</b> ${ev.previous || 'N/A'}\n\n` +
-          `💡 <b>Impact on Gold (XAU/USD):</b>\n` +
-          `Is data ke aate hi Gold me bohot tez swing ($15-$40) aa sakta hai!\n` +
+          `🎯 <b>How It Affects Gold:</b>\n` +
+          `${tradingHint}\n` +
           `${relatedNewsBlock}\n` +
           `⚡ <i>Positions dhyan se manage kare!</i>`;
 
