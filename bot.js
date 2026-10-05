@@ -176,13 +176,31 @@ function analyzeGoldImpact(title) {
   }
 }
 
+// Helper to fetch news specifically related to an economic event
+async function fetchRelatedEventNews(eventTitle) {
+  try {
+    const cleanTitle = encodeURIComponent(eventTitle.replace(/[^a-zA-Z0-9 ]/g, '').trim());
+    const url = `https://news.google.com/rss/search?q=(${cleanTitle}+OR+USD)+AND+(gold+OR+XAUUSD)+when:24h&hl=en-US&gl=US&ceid=US:en`;
+    const feed = await rssParser.parseURL(url);
+    if (feed && feed.items && feed.items.length > 0) {
+      return feed.items.slice(0, 2).map(item => ({
+        title: item.title,
+        link: item.link
+      }));
+    }
+  } catch (e) {
+    console.error('Error fetching event related news:', e.message);
+  }
+  return [];
+}
+
 // ==========================================
 // 3. BREAKING US GOLD & MACRO NEWS (Google News RSS)
 // ==========================================
 async function fetchGoldNews() {
   try {
-    // Specifically targets Gold, US Fed, CPI, NFP, Dollar Index
-    const query = encodeURIComponent('(gold OR XAUUSD) AND ("Fed" OR "Powell" OR "CPI" OR "inflation" OR "NFP" OR "rates" OR "dollar" OR "yields" OR "rally" OR "drop") when:12h');
+    // Specifically targets Gold, US Fed, CPI, NFP, Dollar Index, Geopolitics
+    const query = encodeURIComponent('(gold OR XAUUSD) AND ("Fed" OR "Powell" OR "CPI" OR "inflation" OR "NFP" OR "rates" OR "dollar" OR "yields" OR "rally" OR "drop" OR "war") when:12h');
     const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
 
     const feed = await rssParser.parseURL(url);
@@ -192,6 +210,7 @@ async function fetchGoldNews() {
       title: item.title,
       link: item.link,
       pubDate: item.pubDate,
+      snippet: item.contentSnippet ? item.contentSnippet.replace(/\s+/g, ' ').slice(0, 180) : '',
       id: item.guid || item.link || item.title
     }));
   } catch (err) {
@@ -224,7 +243,7 @@ async function fetchForexFactoryUSDCalendar() {
 async function checkMarket() {
   console.log(`[${new Date().toLocaleTimeString('en-IN', { timeZone: TIMEZONE })}] 🔍 Checking Gold market updates...`);
 
-  // Step A: Check Forex Factory Calendar for events in next 20 mins
+  // Step A: Check Forex Factory Calendar for events in next 20 mins + fetch RELATED NEWS
   try {
     const calendarEvents = await fetchForexFactoryUSDCalendar();
     const now = new Date();
@@ -240,13 +259,23 @@ async function checkMarket() {
         saveNotifiedEvents();
 
         const timeStr = eventTime.toLocaleTimeString('en-IN', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit' });
+        
+        // Fetch real-time news related to this event
+        const relatedNews = await fetchRelatedEventNews(ev.title);
+        let relatedNewsBlock = '';
+        if (relatedNews.length > 0) {
+          relatedNewsBlock = `\n📰 <b>Event Se Related Latest News & Reports:</b>\n` +
+            relatedNews.map((n, idx) => `${idx + 1}. <b>${n.title}</b>\n🔗 <a href="${n.link}">Report Padhe</a>`).join('\n\n') + `\n`;
+        }
 
-        const calMsg = `⚠️ <b>HIGH IMPACT US EVENT ALERT (Forex Factory)</b> ⚠️\n\n` +
+        const calMsg = `⚠️ <b>HIGH IMPACT US EVENT & RELATED NEWS</b> ⚠️\n\n` +
           `📌 <b>Event:</b> ${ev.title}\n` +
           `⏰ <b>Release Time:</b> ${timeStr} (Sirf ${diffMinutes} min me!)\n` +
           `📊 <b>Forecast:</b> ${ev.forecast || 'N/A'} | <b>Previous:</b> ${ev.previous || 'N/A'}\n\n` +
           `💡 <b>Impact on Gold (XAU/USD):</b>\n` +
-          `Is data ke aate hi Gold me bohot tez swing ($15-$40) aa sakta hai! Positions dhyan se manage kare.`;
+          `Is data ke aate hi Gold me bohot tez swing ($15-$40) aa sakta hai!\n` +
+          `${relatedNewsBlock}\n` +
+          `⚡ <i>Positions dhyan se manage kare!</i>`;
 
         await broadcast(calMsg);
       }
@@ -279,8 +308,13 @@ async function checkMarket() {
           ? `💰 <b>XAU/USD Spot:</b> $${gold.price} (${gold.changePercent})` 
           : '';
 
-        const msg = `🟡 <b>US GOLD MARKET BREAKING UPDATE</b>\n\n` +
-          `📰 <b>News:</b> ${item.title}\n\n` +
+        const snippetText = item.snippet && !item.snippet.toLowerCase().includes(item.title.toLowerCase().slice(0, 20))
+          ? `📝 <b>Summary:</b> <i>${item.snippet}</i>\n\n`
+          : '';
+
+        const msg = `🟡 <b>US GOLD MARKET BREAKING NEWS UPDATE</b>\n\n` +
+          `📰 <b>Headline:</b> ${item.title}\n\n` +
+          `${snippetText}` +
           `🎯 <b>Impact:</b> ${impact.status}\n` +
           `ℹ️ <b>Analysis:</b> ${impact.reason}\n\n` +
           `${priceText}\n` +
