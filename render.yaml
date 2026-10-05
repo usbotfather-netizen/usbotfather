@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: us-gold-telegram-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: CHECK_INTERVAL_MINUTES
+        value: 5
+      - key: TIMEZONE
+        value: Asia/Kolkata
