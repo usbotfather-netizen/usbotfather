@@ -321,10 +321,10 @@ async function run5mChartAnalysis() {
   // 1. EMA Trend
   if (ema9 > ema21 && last.close > ema9) {
     score += 25;
-    reasons.push(`Trend is BULLISH (EMA 9 [$${ema9.toFixed(2)}] > EMA 21 [$${ema21.toFixed(2)}])`);
+    reasons.push(`Trend is BULLISH (EMA 9 [$${ema9.toFixed(2)}] is ABOVE EMA 21 [$${ema21.toFixed(2)}])`);
   } else if (ema9 < ema21 && last.close < ema9) {
     score -= 25;
-    reasons.push(`Trend is BEARISH (EMA 9 [$${ema9.toFixed(2)}] < EMA 21 [$${ema21.toFixed(2)}])`);
+    reasons.push(`Trend is BEARISH (EMA 9 [$${ema9.toFixed(2)}] is BELOW EMA 21 [$${ema21.toFixed(2)}])`);
   } else {
     reasons.push(`Trend is Sideways / Chop around EMAs`);
   }
@@ -521,19 +521,19 @@ function isGoldMovingEvent(event) {
 function getEventTradingHint(title) {
   const t = title.toLowerCase();
   if (t.includes('unemployment claims') || t.includes('jobless claims')) {
-    return 'Claims badh kar aaye (Weak Jobs) -> Dollar Down, Gold UP 📈\nClaims kam aaye (Strong Jobs) -> Dollar Up, Gold DOWN 📉';
+    return 'Claims badh kar aaye (Weak Jobs) ➔ Dollar Down, Gold UP 📈\nClaims kam aaye (Strong Jobs) ➔ Dollar Up, Gold DOWN 📉';
   }
   if (t.includes('cpi') || t.includes('ppi') || t.includes('pce') || t.includes('inflation')) {
-    return 'Inflation cooling -> Fed rate cuts -> Gold Rallies UP 📈\nInflation hot/rising -> Rates high -> Gold Slides DOWN 📉';
+    return 'Inflation cooling ➔ Fed rate cuts ➔ Gold Rallies UP 📈\nInflation hot/rising ➔ Rates high ➔ Gold Slides DOWN 📉';
   }
   if (t.includes('nfp') || t.includes('payrolls') || t.includes('employment')) {
-    return 'NFP weak aayi -> Dollar crash, Gold SURGE 🚀\nNFP strong aayi -> Dollar rally, Gold DUMP 📉';
+    return 'NFP weak aayi ➔ Dollar crash, Gold SURGE 🚀\nNFP strong aayi ➔ Dollar rally, Gold DUMP 📉';
   }
   if (t.includes('fomc') || t.includes('powell') || t.includes('rate') || t.includes('speaks')) {
-    return 'Dovish tone (Rate cut umeed) -> Gold UP 📈\nHawkish tone (High rates) -> Gold DOWN 📉';
+    return 'Dovish tone (Rate cut umeed) ➔ Gold UP 📈\nHawkish tone (High rates) ➔ Gold DOWN 📉';
   }
   if (t.includes('ism') || t.includes('gdp') || t.includes('retail sales')) {
-    return 'Weak economic data -> Gold Safe-Haven UP 📈\nStrong data -> Dollar Strong, Gold DOWN 📉';
+    return 'Weak economic data ➔ Gold Safe-Haven UP 📈\nStrong data ➔ Dollar Strong, Gold DOWN 📉';
   }
   return 'High Volatility candle expected! Dollar move ke opposite Gold react karega.';
 }
@@ -721,38 +721,49 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // /candle or /analyze
-bot.onText(/\/(candle|analyze)/, async (msg) => {
+bot.onText(/\/(candle|analyze)(@\w+)?/i, async (msg) => {
   const chatId = msg.chat.id;
-  bot.sendChatAction(chatId, 'typing');
+  try {
+    bot.sendChatAction(chatId, 'typing').catch(() => {});
 
-  const analysis = await run5mChartAnalysis();
-  if (!analysis) {
-    bot.sendMessage(chatId, '⚠️ Chart candle data fetch karne me dikkat aayi. Kripya 1 minute baad try kare.');
-    return;
+    const analysis = await run5mChartAnalysis();
+    if (!analysis) {
+      await bot.sendMessage(chatId, '⚠️ Chart candle data fetch karne me dikkat aayi. Kripya 1 minute baad try kare.');
+      return;
+    }
+
+    const tradeLevels = analysis.sl 
+      ? `💵 <b>Entry Price:</b> $${analysis.entry}\n` +
+        `🛑 <b>Stop Loss (SL):</b> $${analysis.sl}\n` +
+        `🎯 <b>Target 1 (TP1):</b> $${analysis.tp1}\n` +
+        `🎯 <b>Target 2 (TP2):</b> $${analysis.tp2}\n\n`
+      : `💵 <b>Current Price:</b> $${analysis.entry}\n💡 <i>Abhi consolidation / sideways zone hai. Breakout ka wait kare!</i>\n\n`;
+
+    const report = `🤖 <b>5-MIN GOLD (XAU/USD) AI CHART ANALYSIS</b> 📊\n\n` +
+      `🎯 <b>AI PREDICTION:</b> ${analysis.icon} <b>${analysis.prediction}</b>\n` +
+      `⚡ <b>Confidence:</b> ${analysis.confidence}\n\n` +
+      `${tradeLevels}` +
+      `📈 <b>Technical Indicators:</b>\n` +
+      `• Pattern: <b>${analysis.pattern}</b>\n` +
+      `• EMA 9: $${analysis.ema9} | EMA 21: $${analysis.ema21}\n` +
+      `• RSI (14): ${analysis.rsi}\n` +
+      `• Support Level: $${analysis.support}\n` +
+      `• Resistance Level: $${analysis.resistance}\n\n` +
+      `🧠 <b>AI Rationale:</b>\n` +
+      analysis.reasons.map(r => `• ${r}`).join('\n') + `\n\n` +
+      `🕒 <i>Analyzed at: ${new Date().toLocaleTimeString('en-IN', { timeZone: TIMEZONE })} IST</i>`;
+
+    try {
+      await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
+    } catch (sendErr) {
+      console.error('HTML parse error on candle, sending plain text fallback:', sendErr.message);
+      const plain = report.replace(/<[^>]*>/g, '');
+      await bot.sendMessage(chatId, plain);
+    }
+  } catch (err) {
+    console.error('Error in /candle handler:', err.message);
+    bot.sendMessage(chatId, '⚠️ Error generating candle analysis: ' + err.message).catch(() => {});
   }
-
-  const tradeLevels = analysis.sl 
-    ? `💵 <b>Entry Price:</b> $${analysis.entry}\n` +
-      `🛑 <b>Stop Loss (SL):</b> $${analysis.sl}\n` +
-      `🎯 <b>Target 1 (TP1):</b> $${analysis.tp1}\n` +
-      `🎯 <b>Target 2 (TP2):</b> $${analysis.tp2}\n\n`
-    : `💵 <b>Current Price:</b> $${analysis.entry}\n💡 <i>Abhi consolidation / sideways zone hai. Breakout ka wait kare!</i>\n\n`;
-
-  const report = `🤖 <b>5-MIN GOLD (XAU/USD) AI CHART ANALYSIS</b> 📊\n\n` +
-    `🎯 <b>AI PREDICTION:</b> ${analysis.icon} <b>${analysis.prediction}</b>\n` +
-    `⚡ <b>Confidence:</b> ${analysis.confidence}\n\n` +
-    `${tradeLevels}` +
-    `📈 <b>Technical Indicators:</b>\n` +
-    `• Pattern: <b>${analysis.pattern}</b>\n` +
-    `• EMA 9: $${analysis.ema9} | EMA 21: $${analysis.ema21}\n` +
-    `• RSI (14): ${analysis.rsi}\n` +
-    `• Support Level: $${analysis.support}\n` +
-    `• Resistance Level: $${analysis.resistance}\n\n` +
-    `🧠 <b>AI Rationale:</b>\n` +
-    analysis.reasons.map(r => `• ${r}`).join('\n') + `\n\n` +
-    `🕒 <i>Analyzed at: ${new Date().toLocaleTimeString('en-IN', { timeZone: TIMEZONE })} IST</i>`;
-
-  bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
 });
 
 // /gold
